@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <algorithm>
 #include <iterator>
+#include <complex>
 
 using namespace std;
 
@@ -92,19 +93,80 @@ namespace
 {
 	constexpr double r_dist (int i, int j)
 	{
-		return sqrt ((i - 250) * (i - 250) + (j - 250) * (j- 250));
+		return sqrt ((i - 2500) * (i - 2500) + (j - 2500) * (j- 2500));
 	}
+
+	inline pixel operator * (pixel p, double d)
+	{
+		return pixel {p.R * d, p.G * d, p.B * d};
+	}
+
+	inline pixel operator * (double d, pixel p)
+	{
+		return pixel {p.R * d, p.G * d, p.B * d};
+	}
+
+	inline pixel& operator += (pixel& p, const pixel& other)
+	{
+		p.R += other.R;
+		p.G += other.G;
+		p.B += other.B;
+		return p;
+	}
+
+	template <int32_t H, int32_t W>
+	void downsample (pixel (&data) [H][W],
+	                 pixel (&dest) [H/10][W/10])
+	{
+		double r, g, b;
+		for (int i = 0; i < H/10; ++i)
+			for (int j = 0; j < W/10; ++j)
+			{
+				r = g = b = 0;
+				for (int k = 0; k < 10; ++k)
+					for (int l = 0; l < 10; ++l)
+					{
+						r += data [i * 10 + k][j * 10 + l].R;
+						g += data [i * 10 + k][j * 10 + l].G;
+						b += data [i * 10 + k][j * 10 + l].B;
+					}
+				dest [i][j] = pixel {r/100, g/100, b/100};
+			}
+	}
+}
+
+uint8_t escape_time (complex <double> c)
+{
+	complex <double> z = 0;
+	uint8_t n = 0;
+	for (; n != 255; ++n)
+		if (abs (z = z*z + c) > 2)
+			break;
+	return n;
 }
 
 int main ()
 {
-	pixel pic [500][500] = {};
+	pixel (&pic) [10000][15000] = *reinterpret_cast <pixel (*) [10000][15000]> (new pixel [150000000]);
+	pixel (&pic2) [1000][1500] = *reinterpret_cast <pixel (*) [1000][1500]> (new pixel [150000000]);
 
-	for (int i = 0; i < 500; ++i)
-		for (int j = 0; j < 500; ++j)
-			if (/*r_dist (i, j) < 200 || */r_dist (i, j) > 205)
-				pic [i][j] = pixel {0xFF, 0xFF, 0xFF};
+	#pragma omp parallel for num_threads (4)
+	for (int i = 0; i < 10000; ++i)
+		for (int j = 0; j < 15000; ++j)
+		{
+			auto n = escape_time (complex <double> ((j / 5000.) - 2, 1 - (i / 5000.)));
+			pic [i][j] = pixel {n, n, n};
+		}
 
-	ofstream fout ("test.bmp");
-	write_data_to_stream (pic, fout);
+	{
+		ofstream bigger ("bigger.bmp");
+		write_data_to_stream (pic, bigger);
+	}
+
+	downsample (pic, pic2);
+
+	{
+		ofstream big ("big.bmp");
+		write_data_to_stream (pic2, big);
+	}
 }
