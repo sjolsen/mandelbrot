@@ -12,8 +12,6 @@ struct arguments
 
 	arguments (const int argc,
 	           const char* const* const argv);
-	arguments (const arguments&) = default;
-	arguments (arguments&&) = default;
 };
 
 

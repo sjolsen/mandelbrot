@@ -12,7 +12,7 @@ arguments::arguments (const int argc,
 	: image_width (0),
 	  view_width (3.0f),
 	  hcenter (-0.5f),
-	  vcenter (0f)
+	  vcenter (0.0f)
 {
 	if (argc < 2)
 		throw runtime_error (string ("Usage: ") + argv [0] + string (" image_width [view_width hcenter vcenter]"));

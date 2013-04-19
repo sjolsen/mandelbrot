@@ -45,18 +45,34 @@ namespace
 		*(reinterpret_cast <IntType*> (dest)) = value;
 	}
 	#endif
+
+	template <typename T, size_t N>
+	T* begin (T (&array) [N])
+	{
+		return array;
+	}
+
+	template <typename T, size_t N>
+	T* end (T (&array) [N])
+	{
+		return array + N;
+	}
 }
 
 
 
 pixel operator * (pixel p, double d)
 {
-	return pixel {p.R * d, p.G * d, p.B * d};
+	return pixel {static_cast <uint8_t> (p.R * d),
+	              static_cast <uint8_t> (p.G * d),
+	              static_cast <uint8_t> (p.B * d)};
 }
 
 pixel operator * (double d, pixel p)
 {
-	return pixel {p.R * d, p.G * d, p.B * d};
+	return pixel {static_cast <uint8_t> (p.R * d),
+	              static_cast <uint8_t> (p.G * d),
+	              static_cast <uint8_t> (p.B * d)};
 }
 
 pixel& operator += (pixel& p, const pixel& other)
@@ -96,8 +112,8 @@ void write_bitmap (pixel** data,
 	copy (begin (DIB_HDR), end (DIB_HDR), begin (dib_hdr));
 
 	write_little_endian (FILE_SIZE, bmp_hdr + 2);
-	write_little_endian (W, dib_hdr + 4);
-	write_little_endian (H, dib_hdr + 8);
+	write_little_endian (width, dib_hdr + 4);
+	write_little_endian (height, dib_hdr + 8);
 
 	copy (begin (bmp_hdr), end (bmp_hdr), ostreambuf_iterator <char> (os));
 	copy (begin (dib_hdr), end (dib_hdr), ostreambuf_iterator <char> (os));
@@ -105,6 +121,6 @@ void write_bitmap (pixel** data,
 	for (int32_t row = height - 1; row >= 0; --row)
 	{
 		copy (data [row], data [row] + width, ostream_iterator <pixel> (os));
-		fill_n (ostreambuf_iterator <char> (os), (W * 3) % 4, 0);
+		fill_n (ostreambuf_iterator <char> (os), (width * 3) % 4, 0);
 	}
 }
