@@ -1,11 +1,13 @@
 #ifndef CUDA_WRAPPER_HH
 #define CUDA_WRAPPER_HH
 
+#include <pixel.hh>
+
 
 
 void calc_escapes (const int NUM_BLOCKS,
                    const int THREADS_PER_BLOCK,
-                   unsigned int* const times,
+                   pixel* const picture,
                    const int image_width,
                    const int image_height,
                    const float left_viewport_border,

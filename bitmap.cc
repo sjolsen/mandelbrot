@@ -61,30 +61,6 @@ namespace
 
 
 
-pixel operator * (pixel p, double d)
-{
-	return pixel {static_cast <uint8_t> (p.R * d),
-	              static_cast <uint8_t> (p.G * d),
-	              static_cast <uint8_t> (p.B * d)};
-}
-
-pixel operator * (double d, pixel p)
-{
-	return pixel {static_cast <uint8_t> (p.R * d),
-	              static_cast <uint8_t> (p.G * d),
-	              static_cast <uint8_t> (p.B * d)};
-}
-
-pixel& operator += (pixel& p, const pixel& other)
-{
-	p.R += other.R;
-	p.G += other.G;
-	p.B += other.B;
-	return p;
-}
-
-
-
 ostream& operator << (ostream& os,
                       pixel p)
 {

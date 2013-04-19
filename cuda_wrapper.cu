@@ -37,7 +37,19 @@ namespace
 		return 0;
 	}
 
-	__global__ void __calc_escapes (unsigned int* const times, // Using a flat array as a two-dimensinal array
+	__device__ pixel colorize (uint32_t n)
+	{
+		if (n < 256)
+			return pixel {0, 0, static_cast <uint8_t> (n & 0xFF)};
+		else if (n < 512)
+			return pixel {static_cast <uint8_t> ((n & 0xFF) >> 1), 0, 0xFF};
+		else if (n < 768)
+			return pixel {static_cast <uint8_t> (0x80 & ((n & 0xFF) >> 1)), static_cast <uint8_t> (n & 0xFF), 0xFF};
+		else
+			return pixel {0xFF, 0xFF, static_cast <uint8_t> (~(n & 0xFF))};
+	}
+
+	__global__ void __calc_escapes (pixel* const picture, // Using a flat array as a two-dimensinal array
 	                                const int image_width,
 	                                const int image_height,
 	                                const float left_viewport_border,
@@ -55,7 +67,7 @@ namespace
 			for (int column = my_begin; column < my_end && column < image_width; ++column)
 			{
 				c.x = left_viewport_border + column * step;
-				times [row * image_width + column] = escape_time (c);
+				picture [row * image_width + column] = colorize (escape_time (c));
 			}
 		}
 	}
@@ -65,7 +77,7 @@ namespace
 
 void calc_escapes (const int NUM_BLOCKS,
                    const int THREADS_PER_BLOCK,
-                   unsigned int* const times,
+                   pixel* const picture,
                    const int image_width,
                    const int image_height,
                    const float left_viewport_border,
@@ -73,6 +85,6 @@ void calc_escapes (const int NUM_BLOCKS,
                    const float step,
                    const int cols_per_block)
 {
-	__calc_escapes <<<NUM_BLOCKS, THREADS_PER_BLOCK>>> (times, image_width, image_height, left_viewport_border,
+	__calc_escapes <<<NUM_BLOCKS, THREADS_PER_BLOCK>>> (picture, image_width, image_height, left_viewport_border,
 	                                                    top_viewport_border, step, cols_per_block);
 }

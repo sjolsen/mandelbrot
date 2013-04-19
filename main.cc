@@ -41,24 +41,6 @@ using namespace std;
 
 
 
-/*__device__*/ pixel colorize (uint32_t n)
-{
-	if (n < 256)
-		return pixel {0, 0, static_cast <uint8_t> (n & 0xFF)};
-	else if (n < 512)
-		return pixel {static_cast <uint8_t> ((n & 0xFF) >> 1), 0, 0xFF};
-	else if (n < 768)
-		return pixel {static_cast <uint8_t> (0x80 & ((n & 0xFF) >> 1)), static_cast <uint8_t> (n & 0xFF), 0xFF};
-	else
-		return pixel {0xFF, 0xFF, static_cast <uint8_t> (~(n & 0xFF))};
-}
-
-
-
-
-
-
-
 int main (int argc,
           char** argv)
 {
@@ -83,12 +65,12 @@ int main (int argc,
 
 	// Allocate local memory
 
-	uint32_t** times = nullptr;
+	pixel** picture = nullptr;
 	try
 	{
-		times = new uint32_t* [image_height];
+		picture = new pixel* [image_height];
 		for (int i = 0; i < image_height; ++i)
-			times [i] = new uint32_t [image_width];
+			picture [i] = new pixel [image_width];
 	}
 	catch (const std::bad_alloc&)
 	{
@@ -98,8 +80,8 @@ int main (int argc,
 
 	// Allocate device memory
 
-	uint32_t* GPU_escape_times = nullptr;
-	if (cudaMalloc (reinterpret_cast <void**> (&GPU_escape_times), image_height * image_width * sizeof (uint32_t)) != cudaSuccess)
+	pixel* GPU_escape_times = nullptr;
+	if (cudaMalloc (reinterpret_cast <void**> (&GPU_escape_times), image_height * image_width * sizeof (pixel)) != cudaSuccess)
 	{
 		cerr << "Failed to allocate device memory" << endl;
 		return EXIT_FAILURE;
@@ -114,30 +96,12 @@ int main (int argc,
 	              image_height, left_viewport_border, top_viewport_border, step, cols_per_block);
 
 	for (int i = 0; i < image_height; ++i)
-		cudaMemcpy (static_cast <void*> (times [i]), static_cast <void*> (GPU_escape_times + image_width * i),
-		            image_width * sizeof (uint32_t), cudaMemcpyDeviceToHost);
+		cudaMemcpy (static_cast <void*> (picture [i]), static_cast <void*> (GPU_escape_times + image_width * i),
+		            image_width * sizeof (pixel), cudaMemcpyDeviceToHost);
 
 	// Free device memory
 
 	cudaFree (static_cast <void*> (GPU_escape_times));
-
-	// Make our output
-
-	pixel** picture = nullptr;
-	try
-	{
-		picture = new pixel* [image_height];
-		for (int i = 0; i < image_height; ++i)
-			picture [i] = new pixel [image_width];
-	}
-	catch (const std::bad_alloc&)
-	{
-		cerr << "Failed to allocate picture memory" << endl;
-		return EXIT_FAILURE;
-	}
-
-	for (int row = 0; row < image_height; ++row)
-		transform (times [row], times [row] + image_width, picture [row], colorize);
 
 	// Write to file
 
