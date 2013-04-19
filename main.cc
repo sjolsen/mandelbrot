@@ -87,13 +87,12 @@ int main (int argc,
 		return EXIT_FAILURE;
 	}
 
-	// Calculate escape times and copy data back
+	// Create image and copy data back
 
 	const int NUM_BLOCKS = 256;
 	const int THREADS_PER_BLOCK = 128;
-	const int cols_per_block = ((image_width + NUM_BLOCKS - 1) / NUM_BLOCKS);
-	calc_escapes (NUM_BLOCKS, THREADS_PER_BLOCK, GPU_escape_times, image_width,
-	              image_height, left_viewport_border, top_viewport_border, step, cols_per_block);
+	do_image (NUM_BLOCKS, THREADS_PER_BLOCK, GPU_escape_times, image_width,
+	          image_height, left_viewport_border, top_viewport_border, step, NUM_BLOCKS * THREADS_PER_BLOCK);
 
 	for (int i = 0; i < image_height; ++i)
 		cudaMemcpy (static_cast <void*> (picture [i]), static_cast <void*> (GPU_escape_times + image_width * i),
