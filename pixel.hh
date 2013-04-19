@@ -1,6 +1,8 @@
 #ifndef PIXEL_HH
 #define PIXEL_HH
 
+typedef unsigned char uint8_t;
+
 
 
 struct pixel

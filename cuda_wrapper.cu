@@ -4,6 +4,8 @@
 
 using namespace std;
 
+typedef unsigned int uint32_t;
+
 
 
 namespace
@@ -40,13 +42,13 @@ namespace
 	__device__ pixel colorize (uint32_t n)
 	{
 		if (n < 256)
-			return pixel {0, 0, static_cast <uint8_t> (n & 0xFF)};
+			return (pixel) {0, 0, static_cast <uint8_t> (n & 0xFF)};
 		else if (n < 512)
-			return pixel {static_cast <uint8_t> ((n & 0xFF) >> 1), 0, 0xFF};
+			return (pixel) {static_cast <uint8_t> ((n & 0xFF) >> 1), 0, 0xFF};
 		else if (n < 768)
-			return pixel {static_cast <uint8_t> (0x80 & ((n & 0xFF) >> 1)), static_cast <uint8_t> (n & 0xFF), 0xFF};
+			return (pixel) {static_cast <uint8_t> (0x80 & ((n & 0xFF) >> 1)), static_cast <uint8_t> (n & 0xFF), 0xFF};
 		else
-			return pixel {0xFF, 0xFF, static_cast <uint8_t> (~(n & 0xFF))};
+			return (pixel) {0xFF, 0xFF, static_cast <uint8_t> (~(n & 0xFF))};
 	}
 
 	__global__ void __calc_escapes (pixel* const picture, // Using a flat array as a two-dimensinal array
