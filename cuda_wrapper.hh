@@ -5,7 +5,7 @@
 
 void calc_escapes (const int NUM_BLOCKS,
                    const int THREADS_PER_BLOCK,
-                   uint32_t* const times,
+                   unsigned int* const times,
                    const int image_width,
                    const int image_height,
                    const float left_viewport_border,

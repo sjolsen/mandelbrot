@@ -8,16 +8,36 @@ using namespace std;
 
 namespace
 {
-	__device__ uint32_t escape_time (cuComplex c)
+	inline __device__ cuComplex operator * (const cuComplex& a,
+	                                        const cuComplex& b)
 	{
-		cuComplex z = 0;
-		for (uint32_t n = 1; n < 1024; ++n)
+		cuComplex z;
+		z.x = a.x * b.x - a.y * b.y;
+		z.y = a.x * b.y + a.y * b.x;
+		return z;
+	}
+
+	inline __device__ cuComplex operator + (const cuComplex& a,
+	                                        const cuComplex& b)
+	{
+		cuComplex z;
+		z.x = a.x + b.x;
+		z.y = a.y + b.y;
+		return z;
+	}
+
+	__device__ unsigned int escape_time (cuComplex c)
+	{
+		cuComplex z;
+		z.x = 0;
+		z.y = 0;
+		for (unsigned int n = 1; n < 1024; ++n)
 			if (cuCabsf (z = z*z + c) > 2.0f)
 				return n;
 		return 0;
 	}
 
-	__global__ void __calc_escapes (uint32_t* const times, // Using a flat array as a two-dimensinal array
+	__global__ void __calc_escapes (unsigned int* const times, // Using a flat array as a two-dimensinal array
 	                                const int image_width,
 	                                const int image_height,
 	                                const float left_viewport_border,
@@ -45,7 +65,7 @@ namespace
 
 void calc_escapes (const int NUM_BLOCKS,
                    const int THREADS_PER_BLOCK,
-                   uint32_t* const times,
+                   unsigned int* const times,
                    const int image_width,
                    const int image_height,
                    const float left_viewport_border,
