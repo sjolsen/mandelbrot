@@ -51,7 +51,7 @@ namespace
 
 		for (int row = threadIdx.x; row < image_height; row += blockDim.x)
 		{
-			c.y = top_viewport_border + row * step;
+			c.y = top_viewport_border - row * step;
 			for (int column = my_begin; column < my_end && column < image_width; ++column)
 			{
 				c.x = left_viewport_border + column * step;
