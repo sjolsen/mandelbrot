@@ -68,8 +68,21 @@ namespace
 			c.y = top_viewport_border - row * step;
 			for (int column = my_begin; column < my_end && column < image_width; ++column)
 			{
+				float r = 0, g = 0, b = 0;
+				pixel p;
 				c.x = left_viewport_border + column * step;
-				picture [row * image_width + column] = colorize (escape_time (c));
+
+				for (int i = 0; i < 16; ++i)
+				{
+					for (int k = 0; k < 16; ++k)
+					{
+						p = colorize (escape_time (c));
+						r += p.R; g += p.G; b += p.B;
+						c.x += step / 16;
+					}
+					c.y += step / 16;
+				}
+				picture [row * image_width + column] = (pixel) {r/256, g/256, b/256};
 			}
 		}
 	}
