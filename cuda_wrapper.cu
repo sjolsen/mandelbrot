@@ -83,16 +83,16 @@ namespace
 			for (int k = 0; k < hsample; ++k)
 			{
 				sub_pixel = colorize (escape_time (sub_real, sub_imag));
-				r += sub_pixel.R;
-				g += sub_pixel.G;
-				b += sub_pixel.B;
+				r += sub_pixel.red;
+				g += sub_pixel.green;
+				b += sub_pixel.blue;
 				sub_real = real_part + k * hstep;
 			}
 			sub_imag = imag_part + i * vstep;
 		}
-		sub_pixel.R = r / (total_sample);
-		sub_pixel.G = g / (total_sample);
-		sub_pixel.B = b / (total_sample);
+		sub_pixel.red = r / total_sample;
+		sub_pixel.green = g / total_sample;
+		sub_pixel.blue = b / total_sample;
 		*target_pixel = sub_pixel;
 	}
 
@@ -110,6 +110,7 @@ namespace
 		register const int my_id = threadIdx.x + blockIdx.x * blockDim.x;
 
 		load_colors ();
+		__syncthreads ();
 
 		for (int point = my_id; point < array_length; point += nthreads)
 			create_pixel (picture + point,

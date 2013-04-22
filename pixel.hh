@@ -3,11 +3,9 @@
 
 typedef unsigned char uint8_t;
 
-
-
 struct pixel
 {
-	uint8_t R, G, B;
+	uint8_t red, green, blue;
 };
 
 

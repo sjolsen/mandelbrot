@@ -1,4 +1,4 @@
-#include <bitmap.hh>
+//#include <bitmap.hh>
 #include <args.hh>
 #include <cuda_wrapper.hh>
 
@@ -6,6 +6,8 @@
 #include <fstream>
 #include <algorithm>
 
+#include <png++/png.hpp>
+#include <png++/rgb_pixel.hpp>
 #include <cuda_runtime.h>
 
 using namespace std;
@@ -14,30 +16,13 @@ using namespace std;
 
 
 
-
-// namespace
-// {
-
-// 	template <int32_t H, int32_t W>
-// 	void downsample (pixel (&data) [H][W],
-// 	                 pixel (&dest) [H/10][W/10])
-// 	{
-// 		double r, g, b;
-// 		for (int i = 0; i < H/10; ++i)
-// 			for (int j = 0; j < W/10; ++j)
-// 			{
-// 				r = g = b = 0;
-// 				for (int k = 0; k < 10; ++k)
-// 					for (int l = 0; l < 10; ++l)
-// 					{
-// 						r += data [i * 10 + k][j * 10 + l].R;
-// 						g += data [i * 10 + k][j * 10 + l].G;
-// 						b += data [i * 10 + k][j * 10 + l].B;
-// 					}
-// 				dest [i][j] = pixel {r/100, g/100, b/100};
-// 			}
-// 	}
-// }
+namespace
+{
+	png::rgb_pixel pixel_convert (pixel p)
+	{
+		return png::rgb_pixel (p.red, p.green, p.blue);
+	}
+}
 
 
 
@@ -65,12 +50,10 @@ int main (int argc,
 
 	// Allocate local memory
 
-	pixel** picture = nullptr;
+	pixel* row_buffer = nullptr;
 	try
 	{
-		picture = new pixel* [image_height];
-		for (int i = 0; i < image_height; ++i)
-			picture [i] = new pixel [image_width];
+		row_buffer = new pixel [image_width];
 	}
 	catch (const std::bad_alloc&)
 	{
@@ -80,30 +63,36 @@ int main (int argc,
 
 	// Allocate device memory
 
-	pixel* GPU_escape_times = nullptr;
-	if (cudaMalloc (reinterpret_cast <void**> (&GPU_escape_times), image_height * image_width * sizeof (pixel)) != cudaSuccess)
+	pixel* GPU_image_data = nullptr;
+	if (cudaMalloc (reinterpret_cast <void**> (&GPU_image_data), image_height * image_width * sizeof (pixel)) != cudaSuccess)
 	{
 		cerr << "Failed to allocate device memory" << endl;
 		return EXIT_FAILURE;
 	}
 
-	// Create image and copy data back
+	// Create image
 
 	const int NUM_BLOCKS = 256;
 	const int THREADS_PER_BLOCK = 128;
-	do_image (NUM_BLOCKS, THREADS_PER_BLOCK, GPU_escape_times, image_width, image_height, left_viewport_border,
+	do_image (NUM_BLOCKS, THREADS_PER_BLOCK, GPU_image_data, image_width, image_height, left_viewport_border,
 	          top_viewport_border, step, args.hsample, args.vsample, NUM_BLOCKS * THREADS_PER_BLOCK);
 
-	for (int i = 0; i < image_height; ++i)
-		cudaMemcpy (static_cast <void*> (picture [i]), static_cast <void*> (GPU_escape_times + image_width * i),
+	// Copy back data directly into image
+
+	png::image <png::rgb_pixel> out_image (image_width, image_height);
+
+	for (int row = 0; row < image_height; ++row)
+	{
+		cudaMemcpy (static_cast <void*> (row_buffer), static_cast <void*> (GPU_image_data + image_width * row),
 		            image_width * sizeof (pixel), cudaMemcpyDeviceToHost);
+		transform (row_buffer, row_buffer + image_width, out_image [row].begin (), pixel_convert);
+	}
 
 	// Free device memory
 
-	cudaFree (static_cast <void*> (GPU_escape_times));
+	cudaFree (static_cast <void*> (GPU_image_data));
 
 	// Write to file
 
-	ofstream bigger (args.filename);
-	write_bitmap (picture, image_height, image_width, bigger);
+	out_image.write (args.filename);
 }
