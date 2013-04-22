@@ -1,7 +1,9 @@
 CXX = g++
-CXXFLAGS = -std=c++0x -I./
+CXXFLAGS = -std=c++0x -I./ -I/usr/local/cuda/include/
 
 all: mandelbrot
+
+clean: rm *.o mandelbrot
 
 mandelbrot: main.o bitmap.o args.o cuda_wrapper.o
 	$(CXX) -L/usr/local/cuda/lib64/ main.o bitmap.o args.o cuda_wrapper.o -o mandelbrot -lcuda -lcudart
