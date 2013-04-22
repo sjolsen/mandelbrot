@@ -91,8 +91,8 @@ int main (int argc,
 
 	const int NUM_BLOCKS = 256;
 	const int THREADS_PER_BLOCK = 128;
-	do_image (NUM_BLOCKS, THREADS_PER_BLOCK, GPU_escape_times, image_width,
-	          image_height, left_viewport_border, top_viewport_border, step, NUM_BLOCKS * THREADS_PER_BLOCK);
+	do_image (NUM_BLOCKS, THREADS_PER_BLOCK, GPU_escape_times, image_width, image_height, left_viewport_border,
+	          top_viewport_border, step, args.hsample, args.vsample, NUM_BLOCKS * THREADS_PER_BLOCK);
 
 	for (int i = 0; i < image_height; ++i)
 		cudaMemcpy (static_cast <void*> (picture [i]), static_cast <void*> (GPU_escape_times + image_width * i),
@@ -104,6 +104,6 @@ int main (int argc,
 
 	// Write to file
 
-	ofstream bigger ("biggercuda.bmp");
+	ofstream bigger (args.filename);
 	write_bitmap (picture, image_height, image_width, bigger);
 }

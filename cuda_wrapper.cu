@@ -64,11 +64,11 @@ namespace
 
 	__device__ void create_pixel (pixel* const target_pixel,
 	                              const float real_part,
-	                              float imag_part,
-	                              const float step)
+	                              const float imag_part,
+	                              const float step,
+	                              const int hsample,
+	                              const int vsample)
 	{
-		const int hsample = 16;
-		const int vsample = 16;
 		const int total_sample = hsample * vsample;
 
 		register pixel sub_pixel;
@@ -102,6 +102,8 @@ namespace
 	                            const float left_viewport_border,
 	                            const float top_viewport_border,
 	                            const float step,
+	                            const int hsample,
+	                            const int vsample,
 	                            const int nthreads)
 	{
 		register const int array_length = image_height * image_width;
@@ -113,7 +115,7 @@ namespace
 			create_pixel (picture + point,
 			              left_viewport_border + (point % image_width) * step,
 			              top_viewport_border - (point / image_width) * step,
-			              step);
+			              step, hsample, vsample);
 	}
 }
 
@@ -127,8 +129,10 @@ void do_image (const int NUM_BLOCKS,
                const float left_viewport_border,
                const float top_viewport_border,
                const float step,
+               const int hsample,
+               const int vsample,
                const int nthreads)
 {
 	__do_image <<<NUM_BLOCKS, THREADS_PER_BLOCK>>> (picture, image_width, image_height, left_viewport_border,
-	                                                top_viewport_border, step, nthreads);
+	                                                top_viewport_border, step, hsample, vsample, nthreads);
 }

@@ -13,6 +13,8 @@ void do_image (const int NUM_BLOCKS,
                const float left_viewport_border,
                const float top_viewport_border,
                const float step,
+               const int hsample,
+               const int vsample,
                const int cols_per_block);
 
 
