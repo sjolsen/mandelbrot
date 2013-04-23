@@ -92,7 +92,7 @@ namespace
 				b += sub_pixel.blue;
 				sub_real = real_part + k * hstep;
 			}
-			sub_imag = imag_part + i * vstep;
+			sub_imag = imag_part - i * vstep;
 		}
 		sub_pixel.red = r / total_sample;
 		sub_pixel.green = g / total_sample;

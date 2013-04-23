@@ -6,10 +6,12 @@
 #include <fstream>
 #include <algorithm>
 #include <chrono>
+#include <mutex>
 
 #include <png++/png.hpp>
 #include <png++/rgb_pixel.hpp>
 #include <cuda_runtime.h>
+#include <omp.h>
 
 using namespace std;
 using namespace std::chrono;
@@ -24,6 +26,29 @@ namespace
 	{
 		return png::rgb_pixel (p.red, p.green, p.blue);
 	}
+
+	struct atomic_int
+	{
+		int t;
+		mutex m;
+
+		atomic_int ()
+			: t (0)
+		{
+		}
+
+		int get ()
+		{
+			return t;
+		}
+
+		void set (int i)
+		{
+			m.lock ();
+			t = i;
+			m.unlock ();
+		}
+	};
 }
 
 
@@ -39,7 +64,7 @@ int main (int argc,
 	catch (const std::exception& e)
 	{
 		cerr << e.what () << endl;
-		return EXIT_FAILURE;
+		exit (EXIT_FAILURE);
 	}
 
 	// Calculate image parameters
@@ -50,40 +75,46 @@ int main (int argc,
 	const mandel_float top_viewport_border = args.vcenter + args.view_width / 3; // (2/3) / 2
 	const mandel_float step = args.view_width / image_width;
 
-	// Allocate local memory
-
-	pixel* row_buffer = nullptr;
-	try
-	{
-		row_buffer = new pixel [image_width];
-	}
-	catch (const std::bad_alloc&)
-	{
-		cerr << "Failed to allocate local memory" << endl;
-		return EXIT_FAILURE;
-	}
-	png::image <png::rgb_pixel> out_image (image_width, image_height);
-
-	// Allocate device memory
-
 	const int NUM_BLOCKS = 1024;
 	const int THREADS_PER_BLOCK = 512;
-	const int n_passes = 4;
-
-	pixel* GPU_image_data = nullptr;
-	if (cudaMalloc (reinterpret_cast <void**> (&GPU_image_data), (image_height / n_passes) * image_width * sizeof (pixel)) != cudaSuccess)
-	{
-		cerr << "Failed to allocate device memory" << endl;
-		return EXIT_FAILURE;
-	}
+	int n_passes;
+	cudaGetDeviceCount (&n_passes);
 
 	// Create image
 
-	int kernel_milliseconds = 0;
-	int copy_milliseconds = 0;
+	png::image <png::rgb_pixel> out_image (image_width, image_height);
+	atomic_int kernel_milliseconds;
+	atomic_int copy_milliseconds;
 
-	for (int pass = 0; pass < n_passes; ++pass)
+	#pragma omp parallel default (shared) num_threads (n_passes)
 	{
+		int pass = omp_get_thread_num ();
+		cudaSetDevice (pass);
+
+		// Allocate local memory
+
+		pixel* row_buffer = nullptr;
+		try
+		{
+			row_buffer = new pixel [image_width];
+		}
+		catch (const std::bad_alloc&)
+		{
+			cerr << "Failed to allocate local memory" << endl;
+			exit (EXIT_FAILURE);
+		}
+
+		// Allocate device memory
+
+		pixel* GPU_image_data = nullptr;
+		if (cudaMalloc (reinterpret_cast <void**> (&GPU_image_data), (image_height / n_passes) * image_width * sizeof (pixel)) != cudaSuccess)
+		{
+			cerr << "Failed to allocate device memory" << endl;
+			exit (EXIT_FAILURE);
+		}
+
+		// Begin computation
+
 		const int pass_begin = (image_height / n_passes) * pass;
 		const int pass_end = min ((image_height / n_passes) * (pass + 1), image_height);
 		const int pass_height = pass_end - pass_begin;
@@ -101,7 +132,7 @@ int main (int argc,
 		cudaDeviceSynchronize ();
 
 		auto kernel_end = system_clock::now ();
-		kernel_milliseconds += duration_cast <milliseconds> (kernel_end - kernel_start).count ();
+		kernel_milliseconds.set (kernel_milliseconds.get () + duration_cast <milliseconds> (kernel_end - kernel_start).count ());
 
 		// Copy back data directly into image
 
@@ -115,12 +146,12 @@ int main (int argc,
 		}
 
 		auto copy_end = system_clock::now ();
-		copy_milliseconds += duration_cast <milliseconds> (copy_end - copy_start).count ();
+		copy_milliseconds.set (copy_milliseconds.get () + duration_cast <milliseconds> (copy_end - copy_start).count ());
+
+		// Free device memory
+
+		cudaFree (static_cast <void*> (GPU_image_data));
 	}
-
-	// Free device memory
-
-	cudaFree (static_cast <void*> (GPU_image_data));
 
 	// Write to file
 
@@ -130,8 +161,9 @@ int main (int argc,
 
 	// Print statistics
 
-	cout << "Kernel: " << kernel_milliseconds << " ms\n"
-	     << "Copy:   " << copy_milliseconds   << " ms\n"
+	cout << "Kernel: " << kernel_milliseconds.get ()                                      << " ms\n"
+	     << "Avg:    " << kernel_milliseconds.get () / n_passes                           << " ms\n"
+	     << "Copy:   " << copy_milliseconds.get ()                                        << " ms\n"
 	     << "Write:  " << duration_cast <milliseconds> (write_end - write_start).count () << " ms" << endl;
 
 	return EXIT_SUCCESS;
