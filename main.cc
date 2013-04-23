@@ -75,23 +75,46 @@ int main (int argc,
 
 	// Create image
 
-	auto start_time = system_clock::now ();
-
 	const int NUM_BLOCKS = 1024;
 	const int THREADS_PER_BLOCK = 512;
-	do_image (NUM_BLOCKS, THREADS_PER_BLOCK, GPU_image_data, image_width, image_height, left_viewport_border,
-	          top_viewport_border, step, args.hsample, args.vsample, NUM_BLOCKS * THREADS_PER_BLOCK);
+	const int n_passes = 4;
+	int kernel_milliseconds = 0;
+	int copy_milliseconds = 0;
 
-	cudaDeviceSynchronize ();
-	auto end_time = system_clock::now ();
-
-	// Copy back data directly into image
-
-	for (int row = 0; row < image_height; ++row)
+	for (int pass = 0; pass < n_passes; ++pass)
 	{
-		cudaMemcpy (static_cast <void*> (row_buffer), static_cast <void*> (GPU_image_data + image_width * row),
-		            image_width * sizeof (pixel), cudaMemcpyDeviceToHost);
-		transform (row_buffer, row_buffer + image_width, out_image [row].begin (), pixel_convert);
+		const int pass_begin = (image_height / n_passes) * pass;
+		const int pass_end = min ((image_height / n_passes) * (pass + 1), image_height);
+		const int pass_height = pass_end - pass_begin;
+
+		auto kernel_start = system_clock::now ();
+
+		do_image (NUM_BLOCKS, THREADS_PER_BLOCK,
+		          GPU_image_data + pass_begin * image_width,
+		          image_width,
+		          pass_height,
+		          left_viewport_border,
+		          top_viewport_border - pass_begin * step,
+		          step, args.hsample, args.vsample,
+		          NUM_BLOCKS * THREADS_PER_BLOCK);
+		cudaDeviceSynchronize ();
+
+		auto kernel_end = system_clock::now ();
+		kernel_milliseconds += duration_cast <milliseconds> (kernel_end - kernel_start).count ();
+
+		// Copy back data directly into image
+
+		auto copy_start = system_clock::now ();
+
+		for (int row = pass_begin; row < pass_end; ++row)
+		{
+			cudaMemcpy (static_cast <void*> (row_buffer), static_cast <void*> (GPU_image_data + image_width * row),
+			            image_width * sizeof (pixel), cudaMemcpyDeviceToHost);
+			transform (row_buffer, row_buffer + image_width, out_image [row].begin (), pixel_convert);
+		}
+
+		auto copy_end = system_clock::now ();
+		copy_milliseconds += duration_cast <milliseconds> (copy_end - copy_start).count ();
 	}
 
 	// Free device memory
@@ -100,13 +123,15 @@ int main (int argc,
 
 	// Write to file
 
+	auto write_start = system_clock::now ();
 	out_image.write (args.filename);
-	auto end_copy = system_clock::now ();
+	auto write_end = system_clock::now ();
 
 	// Print statistics
 
-	cout << "Kernel execution took " << duration_cast <milliseconds> (end_time - start_time).count () << " ms\n"
-	     << "Copying and writing image data took " << duration_cast <milliseconds> (end_copy - end_time).count () << " ms" << endl;
+	cout << "Kernel: " << kernel_milliseconds << " ms\n"
+	     << "Copy:   " << copy_milliseconds   << " ms\n"
+	     << "Write:  " << duration_cast <milliseconds> (write_end - write_start).count () << " ms" << endl;
 
 	return EXIT_SUCCESS;
 }
