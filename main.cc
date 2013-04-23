@@ -66,8 +66,12 @@ int main (int argc,
 
 	// Allocate device memory
 
+	const int NUM_BLOCKS = 1024;
+	const int THREADS_PER_BLOCK = 512;
+	const int n_passes = 4;
+
 	pixel* GPU_image_data = nullptr;
-	if (cudaMalloc (reinterpret_cast <void**> (&GPU_image_data), image_height * image_width * sizeof (pixel)) != cudaSuccess)
+	if (cudaMalloc (reinterpret_cast <void**> (&GPU_image_data), (image_height / n_passes) * image_width * sizeof (pixel)) != cudaSuccess)
 	{
 		cerr << "Failed to allocate device memory" << endl;
 		return EXIT_FAILURE;
@@ -75,9 +79,6 @@ int main (int argc,
 
 	// Create image
 
-	const int NUM_BLOCKS = 1024;
-	const int THREADS_PER_BLOCK = 512;
-	const int n_passes = 4;
 	int kernel_milliseconds = 0;
 	int copy_milliseconds = 0;
 
@@ -90,7 +91,7 @@ int main (int argc,
 		auto kernel_start = system_clock::now ();
 
 		do_image (NUM_BLOCKS, THREADS_PER_BLOCK,
-		          GPU_image_data + pass_begin * image_width,
+		          GPU_image_data,
 		          image_width,
 		          pass_height,
 		          left_viewport_border,
@@ -106,11 +107,11 @@ int main (int argc,
 
 		auto copy_start = system_clock::now ();
 
-		for (int row = pass_begin; row < pass_end; ++row)
+		for (int row = 0; row < pass_height; ++row)
 		{
 			cudaMemcpy (static_cast <void*> (row_buffer), static_cast <void*> (GPU_image_data + image_width * row),
 			            image_width * sizeof (pixel), cudaMemcpyDeviceToHost);
-			transform (row_buffer, row_buffer + image_width, out_image [row].begin (), pixel_convert);
+			transform (row_buffer, row_buffer + image_width, out_image [pass_begin + row].begin (), pixel_convert);
 		}
 
 		auto copy_end = system_clock::now ();
