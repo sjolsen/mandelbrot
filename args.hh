@@ -2,6 +2,7 @@
 #define ARGS_HH
 
 #include <string>
+#include <cuda_wrapper.hh>
 
 
 
@@ -9,11 +10,11 @@ struct arguments
 {
 	std::string filename;
 	int image_width;
-	float view_width;
-	float hcenter;
-	float vcenter;
-	float hsample;
-	float vsample;
+	mandel_float view_width;
+	mandel_float hcenter;
+	mandel_float vcenter;
+	mandel_float hsample;
+	mandel_float vsample;
 
 	arguments (const int argc,
 	           const char* const* const argv);
