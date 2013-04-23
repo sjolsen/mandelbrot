@@ -48,16 +48,14 @@ namespace
 
 	__device__ void load_colors ()
 	{
-		if (threadIdx.x == 0)
+		for (int i = threadIdx.x; i < 1024; i += blockDim.x)
 		{
-			for (int i = 0; i < 1024; ++i)
-			{
-				pixel p = colorize (i);
-				local_red [i] = p.red;
-				local_green [i] = p.green;
-				local_blue [i] = p.blue;
-			}
+			pixel p = colorize (i);
+			local_red [i] = p.red;
+			local_green [i] = p.green;
+			local_blue [i] = p.blue;
 		}
+		__syncthreads ();
 	}
 	#endif
 
@@ -83,13 +81,15 @@ namespace
 			{
 				#ifdef MEMOIZE_COLOR
 				register unsigned int etime = escape_time (sub_real, sub_imag);
-				sub_pixel = (pixel) {local_red [etime], local_green [etime], local_blue [etime]};
+				r += local_red [etime];
+				g += local_green [etime];
+				b += local_blue [etime];
 				#else
 				sub_pixel = colorize (escape_time (sub_real, sub_imag));
-				#endif
 				r += sub_pixel.red;
 				g += sub_pixel.green;
 				b += sub_pixel.blue;
+				#endif
 				sub_real = real_part + k * hstep;
 			}
 			sub_imag = imag_part - i * vstep;
@@ -115,7 +115,6 @@ namespace
 
 		#ifdef MEMOIZE_COLOR
 		load_colors ();
-		__syncthreads ();
 		#endif
 
 		for (int point = my_id; point < array_length; point += nthreads)
