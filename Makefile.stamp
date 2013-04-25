@@ -1,5 +1,5 @@
-CXX = g++
-CXXFLAGS = -std=c++0x -O3 -I./ -I/home1/02309/sjolsen/include -I/opt/apps/cuda/5.0/include/
+CXX = icpc
+CXXFLAGS = -std=c++0x -xhost -O3 -I./ -I/home1/02309/sjolsen/include -I/opt/apps/cuda/5.0/include/
 
 all: mandelbrot
 
@@ -7,10 +7,10 @@ clean:
 	rm *.o mandelbrot
 
 mandelbrot: main.o args.o cuda_wrapper.o
-	$(CXX) -L/usr/local/cuda/lib64/ main.o  args.o cuda_wrapper.o -o mandelbrot -L$(TACC_CUDA_LIB) -lcuda -lcudart `libpng-config --ldflags` -fopenmp
+	mpicxx  main.o  args.o cuda_wrapper.o -o mandelbrot -L$(TACC_CUDA_LIB) -lcudart `libpng-config --ldflags`
 
 main.o: main.cc args.hh cuda_wrapper.hh
-	$(CXX)  $(CXXFLAGS) -fopenmp main.cc -c
+	mpicxx  $(CXXFLAGS) main.cc -c
 
 args.o: args.cc args.hh
 	$(CXX)  $(CXXFLAGS) args.cc -c

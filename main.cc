@@ -1,3 +1,5 @@
+#include <mpi.h>
+
 #include <args.hh>
 #include <cuda_wrapper.hh>
 
@@ -8,7 +10,6 @@
 #include <png++/png.hpp>
 #include <png++/rgb_pixel.hpp>
 #include <cuda_runtime.h>
-#include <mpi.h>
 
 #include <unistd.h>
 
