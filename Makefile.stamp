@@ -1,5 +1,5 @@
 CXX = icpc
-CXXFLAGS = -std=c++0x -xhost -O3 -I./ -I/home1/02309/sjolsen/include -I/opt/apps/cuda/5.0/include/
+CXXFLAGS = -std=c++0x -xhost -O3 -I./ -I$(TACC_CUDA_INC)
 
 all: mandelbrot
 
