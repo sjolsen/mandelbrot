@@ -51,6 +51,14 @@ namespace
 			m.unlock ();
 		}
 	};
+
+	template <typename Iter>
+	int accumulate (Iter first, Iter last, int init)
+	{
+		while (first != last)
+			init += *first++;
+		return init;
+	}
 }
 
 
@@ -61,7 +69,7 @@ int main (int argc,
 	// Program initialization
 
 	MPI_Init (&argc, &argv);
-	atexit (MPI_Finalize);
+	atexit ((void (*) ()) MPI_Finalize);
 
 	arguments args;
 	try
@@ -77,8 +85,8 @@ int main (int argc,
 	// Calculate work division
 
 	int my_rank, comm_size, n_gpu;
-	if (MPI_Comm_rank (MPI_COMM_WORLD, &my_rank)   != MPI_Success ||
-	    MPI_Comm_size (MPI_COMM_WORLD, &comm_size) != MPI_Success ||
+	if (MPI_Comm_rank (MPI_COMM_WORLD, &my_rank)   != MPI_SUCCESS ||
+	    MPI_Comm_size (MPI_COMM_WORLD, &comm_size) != MPI_SUCCESS ||
 	    cudaGetDeviceCount (&n_gpu)                != cudaSuccess)
 	{
 		cerr << "Failed to initialize the program" << endl;
@@ -92,13 +100,13 @@ int main (int argc,
 	                   static_cast <void*> (gpus_by_rank.data ()),
 	                   gpus_by_rank.size (),
 	                   MPI_INT,
-	                   MPI_COMM_WORLD) != MPI_Success)
+	                   MPI_COMM_WORLD) != MPI_SUCCESS)
 	{
 		cerr << "Failed to initialize the program" << endl;
 		exit (EXIT_FAILURE);
 	}
-	const int first_pass = accumulate (begin (gpus_by_rank), begin (gpus_by_rank) + my_rank, 0);
-	const int n_passes = accumulate (begin (gpus_by_rank), end (gpus_by_rank), 0);
+	const int first_pass = accumulate (gpus_by_rank.begin (), gpus_by_rank.begin () + my_rank, 0);
+	const int n_passes = accumulate (gpus_by_rank.begin (), gpus_by_rank.end (), 0);
 
 	// Calculate image parameters
 
@@ -188,7 +196,7 @@ int main (int argc,
 		                image_height * image_width * sizeof (pixel),
 		                MPI_CHAR,
 		                0,
-		                MPI_COMM_WORLD) != MPI_Success)
+		                MPI_COMM_WORLD) != MPI_SUCCESS)
 		{
 			cerr << "Failed to gather image results" << endl;
 			exit (EXIT_FAILURE);
@@ -207,9 +215,10 @@ int main (int argc,
 
 	png::image <png::rgb_pixel> out_image (image_width, image_height);
 	for (int row = 0; row < image_height; ++row)
-		copy (image_buffer + row * image_width,
-		      image_buffer + (row + 1) * image_width,
-		      out_image [row].begin ());
+		transform (image_buffer + row * image_width,
+		           image_buffer + (row + 1) * image_width,
+		           out_image [row].begin (),
+		           pixel_convert);
 
 	auto write_start = system_clock::now ();
 	out_image.write (args.filename);
