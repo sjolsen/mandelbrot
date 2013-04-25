@@ -1,19 +1,16 @@
-//#include <bitmap.hh>
 #include <args.hh>
 #include <cuda_wrapper.hh>
 
 #include <iostream>
-#include <fstream>
 #include <algorithm>
 #include <chrono>
-#include <mutex>
-#include <vector>
 
 #include <png++/png.hpp>
 #include <png++/rgb_pixel.hpp>
 #include <cuda_runtime.h>
-#include <omp.h>
 #include <mpi.h>
+
+#include <unistd.h>
 
 using namespace std;
 using namespace std::chrono;
@@ -29,35 +26,25 @@ namespace
 		return png::rgb_pixel (p.red, p.green, p.blue);
 	}
 
-	struct atomic_int
-	{
-		int t;
-		mutex m;
-
-		atomic_int ()
-			: t (0)
-		{
-		}
-
-		int get ()
-		{
-			return t;
-		}
-
-		void set (int i)
-		{
-			m.lock ();
-			t = i;
-			m.unlock ();
-		}
-	};
-
 	template <typename Iter>
 	int accumulate (Iter first, Iter last, int init)
 	{
 		while (first != last)
 			init += *first++;
 		return init;
+	}
+
+	void gdb_hook (int rank)
+	{
+		char hostname [128];
+		size_t len = 126;
+		gethostname (hostname, len);
+		auto pid = getpid ();
+
+		cout << to_string ((long long int) rank) + ": " + to_string ((long long int) pid) + string (" ") + string (hostname) + "\n";
+		volatile int i = 0;
+		while (!i)
+			sleep (5);
 	}
 }
 
@@ -69,7 +56,7 @@ int main (int argc,
 	// Program initialization
 
 	MPI_Init (&argc, &argv);
-	atexit ((void (*) ()) MPI_Finalize);
+	atexit ((void (*) ()) MPI_Finalize); // So it just gets called automatically
 
 	arguments args;
 	try
@@ -84,29 +71,16 @@ int main (int argc,
 
 	// Calculate work division
 
-	int my_rank, comm_size, n_gpu;
+	int my_rank, comm_size;
 	if (MPI_Comm_rank (MPI_COMM_WORLD, &my_rank)   != MPI_SUCCESS ||
-	    MPI_Comm_size (MPI_COMM_WORLD, &comm_size) != MPI_SUCCESS ||
-	    cudaGetDeviceCount (&n_gpu)                != cudaSuccess)
+	    MPI_Comm_size (MPI_COMM_WORLD, &comm_size) != MPI_SUCCESS)
 	{
-		cerr << "Failed to initialize the program" << endl;
+		cerr << "Failed to initialize the program\n";
 		exit (EXIT_FAILURE);
 	}
 
-	vector <int> gpus_by_rank (comm_size);
-	if (MPI_Allgather (static_cast <void*> (&n_gpu),
-	                   1,
-	                   MPI_INT,
-	                   static_cast <void*> (gpus_by_rank.data ()),
-	                   gpus_by_rank.size (),
-	                   MPI_INT,
-	                   MPI_COMM_WORLD) != MPI_SUCCESS)
-	{
-		cerr << "Failed to initialize the program" << endl;
-		exit (EXIT_FAILURE);
-	}
-	const int first_pass = accumulate (gpus_by_rank.begin (), gpus_by_rank.begin () + my_rank, 0);
-	const int n_passes = accumulate (gpus_by_rank.begin (), gpus_by_rank.end (), 0);
+	// if (my_rank == 0)
+	// 	gdb_hook (0);
 
 	// Calculate image parameters
 
@@ -121,114 +95,100 @@ int main (int argc,
 
 	// Create image
 
-	atomic_int kernel_milliseconds;
+	int kernel_milliseconds = 0;
+
+	const int partition = (image_height + comm_size - 1) / comm_size;
+	const int pass_begin = partition * my_rank;
+	const int pass_end = min (partition * (my_rank + 1), image_height);
+	const int pass_height = pass_end - pass_begin;
+
+	// Allocate local memory
+
+	pixel* pass_buffer = nullptr;
 	pixel* image_buffer = nullptr;
-	if (my_rank == 0)
-		try
-		{
-			image_buffer = new pixel [image_height * image_width];
-		}
-		catch (std::bad_alloc&)
-		{
-			cerr << "Failed to allocate image buffer" << endl;
-			exit (EXIT_FAILURE);
-		}
-
-	#pragma omp parallel for default (shared) num_threads (n_gpu)
-	for (int gpu = 0; gpu < n_gpu; ++gpu)
+	try
 	{
-		cudaSetDevice (gpu);
-		const int pass = first_pass + gpu;
-		const int pass_begin = (image_height / n_passes) * pass;
-		const int pass_end = min ((image_height / n_passes) * (pass + 1), image_height);
-		const int pass_height = pass_end - pass_begin;
-
-		// Allocate local memory
-
-		pixel* pass_buffer = nullptr;
-		try
-		{
-			pass_buffer = new pixel [pass_height * image_width];
-		}
-		catch (const std::bad_alloc&)
-		{
-			cerr << "Failed to allocate local memory" << endl;
-			exit (EXIT_FAILURE);
-		}
-
-		// Allocate device memory
-
-		pixel* GPU_image_data = nullptr;
-		if (cudaMalloc (reinterpret_cast <void**> (&GPU_image_data), pass_height * image_width * sizeof (pixel)) != cudaSuccess)
-		{
-			cerr << "Failed to allocate device memory" << endl;
-			exit (EXIT_FAILURE);
-		}
-
-		// Begin computation
-
-		auto kernel_start = system_clock::now ();
-
-		do_image (NUM_BLOCKS, THREADS_PER_BLOCK,
-		          GPU_image_data,
-		          image_width,
-		          pass_height,
-		          left_viewport_border,
-		          top_viewport_border - pass_begin * step,
-		          step, args.hsample, args.vsample,
-		          NUM_BLOCKS * THREADS_PER_BLOCK);
-		cudaDeviceSynchronize ();
-
-		auto kernel_end = system_clock::now ();
-		kernel_milliseconds.set (kernel_milliseconds.get () + duration_cast <milliseconds> (kernel_end - kernel_start).count ());
-
-		// Copy back data to host memory
-
-		cudaMemcpy (static_cast <void*> (pass_buffer), static_cast <void*> (GPU_image_data),
-		            pass_height * image_width * sizeof (pixel), cudaMemcpyDeviceToHost);
-
-		// Gather on master node
-
-		if (MPI_Gather (static_cast <void*> (pass_buffer),
-		                pass_height * image_width * sizeof (pixel),
-		                MPI_CHAR,
-		                image_buffer,
-		                image_height * image_width * sizeof (pixel),
-		                MPI_CHAR,
-		                0,
-		                MPI_COMM_WORLD) != MPI_SUCCESS)
-		{
-			cerr << "Failed to gather image results" << endl;
-			exit (EXIT_FAILURE);
-		}
-
-		// Free memory
-
-		cudaFree (static_cast <void*> (GPU_image_data));
-		delete [] pass_buffer;
+		if (my_rank == 0)
+			image_buffer = new pixel [partition * comm_size * image_width]; // Potentially over-allocate to prevent SIGSEGV
+		pass_buffer = new pixel [pass_height * image_width];
+	}
+	catch (const std::bad_alloc&)
+	{
+		cerr << "Failed to allocate local memory\n";
+		exit (EXIT_FAILURE);
 	}
 
-	if (my_rank != 0)
-		exit (EXIT_SUCCESS);
+	// Allocate device memory
 
-	// Write to file
+	pixel* GPU_image_data = nullptr;
+	if (cudaMalloc (reinterpret_cast <void**> (&GPU_image_data), pass_height * image_width * sizeof (pixel)) != cudaSuccess)
+	{
+		cerr << "Failed to allocate device memory\n";
+		exit (EXIT_FAILURE);
+	}
 
-	png::image <png::rgb_pixel> out_image (image_width, image_height);
-	for (int row = 0; row < image_height; ++row)
-		transform (image_buffer + row * image_width,
-		           image_buffer + (row + 1) * image_width,
-		           out_image [row].begin (),
-		           pixel_convert);
+	// Begin computation
 
-	auto write_start = system_clock::now ();
-	out_image.write (args.filename);
-	auto write_end = system_clock::now ();
+	auto kernel_start = system_clock::now ();
 
-	// Print statistics
+	do_image (NUM_BLOCKS, THREADS_PER_BLOCK,
+	          GPU_image_data,
+	          image_width,
+	          pass_height,
+	          left_viewport_border,
+	          top_viewport_border - pass_begin * step,
+	          step, args.hsample, args.vsample,
+	          NUM_BLOCKS * THREADS_PER_BLOCK);
 
-	cout << "Kernel: " << kernel_milliseconds.get ()                                      << " ms\n"
-	     << "Avg:    " << kernel_milliseconds.get () / n_passes                           << " ms\n"
-	     << "Write:  " << duration_cast <milliseconds> (write_end - write_start).count () << " ms" << endl;
+	cudaDeviceSynchronize ();
+	auto kernel_end = system_clock::now ();
+	kernel_milliseconds += duration_cast <milliseconds> (kernel_end - kernel_start).count ();
 
-	return EXIT_SUCCESS;
+	// Copy back data to host memory and free device memory
+
+	cudaMemcpy (static_cast <void*> (pass_buffer), static_cast <void*> (GPU_image_data),
+	            pass_height * image_width * sizeof (pixel), cudaMemcpyDeviceToHost);
+	cudaFree (static_cast <void*> (GPU_image_data));
+
+	// Gather on master node
+
+	if (MPI_Gather (static_cast <void*> (pass_buffer),
+	                pass_height * image_width * sizeof (pixel),
+	                MPI_BYTE,
+	                static_cast <void*> (image_buffer),
+	                partition * image_width * sizeof (pixel),
+	                MPI_BYTE,
+	                0,
+	                MPI_COMM_WORLD) != MPI_SUCCESS)
+	{
+		cerr << "Failed to gather image results\n";
+		exit (EXIT_FAILURE);
+	}
+
+	// Write image
+
+	if (my_rank == 0)
+	{
+		png::image <png::rgb_pixel> out_image (image_width, image_height);
+		for (int row = 0; row < image_height; ++row)
+			transform (image_buffer + row * image_width,
+			           image_buffer + (row + 1) * image_width,
+			           out_image [row].begin (),
+			           pixel_convert);
+
+		auto write_start = system_clock::now ();
+		out_image.write (args.filename);
+		auto write_end = system_clock::now ();
+
+		// Print statistics
+
+		cout << "Kernel: " << kernel_milliseconds                                             << " ms\n"
+		     << "Avg:    " << kernel_milliseconds / comm_size                                 << " ms\n"
+		     << "Write:  " << duration_cast <milliseconds> (write_end - write_start).count () << " ms" << endl;
+
+		delete [] image_buffer;
+	}
+
+	delete [] pass_buffer;
+	exit (EXIT_SUCCESS);
 }
