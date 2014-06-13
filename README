@@ -1,0 +1,28 @@
+This project may be built for Stampede using Makefile.stamp. Building
+and running requires that the following commands be issued beforehand:
+
+	module load cuda module swap mvapich2 impi
+
+The project also depends on png++, which is not installed on
+Stampede. This may be worked around by installing it locally:
+
+	wget http://download.savannah.nongnu.org/releases/pngpp/png++-0.2.5.tar.gz
+	tar -xf png++-0.2.5.tar.gz
+	cd png++-0.2.5
+        make PREFIX=/path/to/mandelbrot
+	install
+
+This will install the necessary headers in ~/include. Before they can
+be used, they need to be added to the include path:
+
+	export CPLUS_INCLUDE_PATH="$CPLUS_INCLUDE_PATH:/path/to/mandelbrot"
+	make all
+
+Submission scripts are provided which invoke the program with various
+thread counts, file sizes, and anti-aliasing levels at a fixed
+viewpoint. The viewpoint may be modified by editing seahorse.bash, or
+by invoking the program directly. Invoking with fewer than two
+arguments causes the invocation rules to be displayed. Source code is
+maintained as a git repository at:
+
+	http://www.github.com/sjolsen/mandelbrot
