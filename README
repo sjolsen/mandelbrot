@@ -14,7 +14,7 @@ Stampede. This may be worked around by installing it locally:
 This will install the necessary headers in ~/include. Before they can
 be used, they need to be added to the include path:
 
-	export CPLUS_INCLUDE_PATH="$CPLUS_INCLUDE_PATH:/path/to/mandelbrot"
+	export CPLUS_INCLUDE_PATH="$CPLUS_INCLUDE_PATH:/path/to/mandelbrot/include"
 	make all
 
 Submission scripts are provided which invoke the program with various
