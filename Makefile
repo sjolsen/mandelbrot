@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++0x -O0 -g -I./ -I/home/gluster/so1132/include -I/usr/local/cuda/include/
+CXXFLAGS = -std=c++0x -O3 -I./ -I/home/gluster/so1132/include -I/usr/local/cuda/include/
 
 all: mandelbrot
 
@@ -7,10 +7,10 @@ clean:
 	rm *.o mandelbrot
 
 mandelbrot: main.o args.o cuda_wrapper.o
-	mpicxx main.o  args.o cuda_wrapper.o -o mandelbrot -L/usr/local/cuda/lib64/ -lcudart `libpng-config --ldflags`
+	$(CXX) -L/usr/local/cuda/lib64/ main.o  args.o cuda_wrapper.o -o mandelbrot -lcuda -lcudart `libpng-config --ldflags` -fopenmp
 
 main.o: main.cc args.hh cuda_wrapper.hh
-	mpicxx  $(CXXFLAGS) main.cc -c
+	$(CXX)  $(CXXFLAGS) -fopenmp main.cc -c
 
 args.o: args.cc args.hh
 	$(CXX)  $(CXXFLAGS) args.cc -c
