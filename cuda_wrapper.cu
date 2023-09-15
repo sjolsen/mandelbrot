@@ -61,14 +61,19 @@ namespace
 	__device__ pixel<mandel_float> colorize_uncached(uint32_t n) {
 		static const pixel<mandel_float> colors[] = {
 			{0.0, 0.0, 0.0},  // black
-			{0.0, 0.0, 1.0},  // blue
-			{0.5, 0.0, 1.0},  // purple
-			{1.0, 1.0, 1.0},  // white
+			{0.4, 0.0, 0.0},  // red
+			{1.0, 0.5, 0.0},  // orange
 			{1.0, 1.0, 0.0},  // yellow
+			{1.0, 1.0, 1.0},  // white
+			{0.5, 1.0, 1.0},  // cyan
+			{0.0, 0.0, 1.0},  // blue
+			{0.5, 0.0, 0.5},  // purple
+			{0.0, 0.0, 0.0},  // black
 		};
 
-		mandel_float x = (n % 256) / 256.0;
-		size_t i = (n / 256) % 4;
+		n = 1024 * pow(n / 1024.0, 0.7);
+		mandel_float x = (n % 128) / 128.0;
+		size_t i = (n / 128) % 8;
 		pixel<mandel_float> a = colors[i];
 		pixel<mandel_float> b = colors[i + 1];
 		return {
