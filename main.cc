@@ -22,7 +22,7 @@ using namespace std::chrono;
 
 namespace
 {
-	png::rgb_pixel pixel_convert (pixel p)
+	png::rgb_pixel pixel_convert (pixel<uint8_t> p)
 	{
 		return png::rgb_pixel (p.red, p.green, p.blue);
 	}
@@ -93,10 +93,10 @@ int main (int argc,
 
 		// Allocate local memory
 
-		pixel* row_buffer = nullptr;
+		pixel<uint8_t>* row_buffer = nullptr;
 		try
 		{
-			row_buffer = new pixel [image_width];
+			row_buffer = new pixel<uint8_t> [image_width];
 		}
 		catch (const std::bad_alloc&)
 		{
@@ -106,8 +106,8 @@ int main (int argc,
 
 		// Allocate device memory
 
-		pixel* GPU_image_data = nullptr;
-		if (cudaMalloc (reinterpret_cast <void**> (&GPU_image_data), (image_height / n_passes) * image_width * sizeof (pixel)) != cudaSuccess)
+		pixel<uint8_t>* GPU_image_data = nullptr;
+		if (cudaMalloc (reinterpret_cast <void**> (&GPU_image_data), (image_height / n_passes) * image_width * sizeof (pixel<uint8_t>)) != cudaSuccess)
 		{
 			cerr << "Failed to allocate device memory" << endl;
 			exit (EXIT_FAILURE);
@@ -141,7 +141,7 @@ int main (int argc,
 		for (int row = 0; row < pass_height; ++row)
 		{
 			cudaMemcpy (static_cast <void*> (row_buffer), static_cast <void*> (GPU_image_data + image_width * row),
-			            image_width * sizeof (pixel), cudaMemcpyDeviceToHost);
+			            image_width * sizeof (pixel<uint8_t>), cudaMemcpyDeviceToHost);
 			transform (row_buffer, row_buffer + image_width, out_image [pass_begin + row].begin (), pixel_convert);
 		}
 

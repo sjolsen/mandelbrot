@@ -1,10 +1,13 @@
 #include <cuda_wrapper.hh>
 
+#include <cuda.h>
+
 using namespace std;
 
 typedef unsigned int uint32_t;
 
-//#define MEMOIZE_COLOR
+#define MEMOIZE_COLOR 1
+#define NAIVE_COLOR 0
 
 namespace
 {
@@ -28,38 +31,74 @@ namespace
 		return 0;
 	}
 
-	__device__ pixel colorize (uint32_t n)
+	__device__ mandel_float lerp(mandel_float x, mandel_float a, mandel_float b)
 	{
+		return fma(x, b, fma(-x, a, a));
+	}
 
-		if (n < 256)
-			return (pixel) {0, 0, static_cast <uint8_t> (n & 0xFF)};
-		else if (n < 512)
-			return (pixel) {static_cast <uint8_t> ((n & 0xFF) >> 1), 0, 0xFF};
-		else if (n < 768)
-			return (pixel) {static_cast <uint8_t> (0x80 | ((n & 0xFF) >> 1)), static_cast <uint8_t> (n & 0xFF), 0xFF};
+	__device__ mandel_float perceptual_to_linear(mandel_float l) {
+		#if NAIVE_COLOR
+		return l;
+		#else
+		const mandel_float d = 6.0 / 29.0;
+		const mandel_float d2 = pow(d, 2);
+		const mandel_float t = (l + 0.16) / 1.16;
+		return t > d ? pow(t, 3) : 3.0 * d2 * (t - 4.0 / 29.0);
+		#endif
+	}
+
+	__device__ mandel_float linear_to_srgb(mandel_float l) {
+		#if NAIVE_COLOR
+		return l;
+		#else
+		if (l <= 0.0031308)
+			return 12.92 * l;
 		else
-		 	return (pixel) {0xFF, 0xFF, static_cast <uint8_t> (~(n & 0xFF))};
+			return 1.055 * pow(l, 1/2.4) - 0.055;
+		#endif
 	}
 
-	#ifdef MEMOIZE_COLOR
-	__shared__ uint8_t local_red [1024];
-	__shared__ uint8_t local_green [1024];
-	__shared__ uint8_t local_blue [1024];
+	__device__ pixel<mandel_float> colorize_uncached(uint32_t n) {
+		static const pixel<mandel_float> colors[] = {
+			{0.0, 0.0, 0.0},  // black
+			{0.0, 0.0, 1.0},  // blue
+			{0.5, 0.0, 1.0},  // purple
+			{1.0, 1.0, 1.0},  // white
+			{1.0, 1.0, 0.0},  // yellow
+		};
 
-	__device__ void load_colors ()
-	{
-		for (int i = threadIdx.x; i < 1024; i += blockDim.x)
-		{
-			pixel p = colorize (i);
-			local_red [i] = p.red;
-			local_green [i] = p.green;
-			local_blue [i] = p.blue;
-		}
-		__syncthreads ();
+		mandel_float x = (n % 256) / 256.0;
+		size_t i = (n / 256) % 4;
+		pixel<mandel_float> a = colors[i];
+		pixel<mandel_float> b = colors[i + 1];
+		return {
+			perceptual_to_linear(lerp(x, a.red, b.red)),
+			perceptual_to_linear(lerp(x, a.green, b.green)),
+			perceptual_to_linear(lerp(x, a.blue, b.blue)),
+		};
 	}
+
+	#if MEMOIZE_COLOR
+	__shared__ pixel<mandel_float> color_cache[1024];
 	#endif
 
-	__device__ void create_pixel (pixel* const target_pixel,
+	__device__ void load_colors() {
+	#if MEMOIZE_COLOR
+		for (int i = threadIdx.x; i < 1024; i += blockDim.x)
+			color_cache[i] = colorize_uncached(i);
+		__syncthreads ();
+	#endif
+	}
+
+	__device__ pixel<mandel_float> colorize(uint32_t n) {
+	#if MEMOIZE_COLOR
+		return color_cache[n];
+	#else
+		return colorize_uncached(n);
+	#endif
+	}
+
+	__device__ void create_pixel (pixel<uint8_t>* const target_pixel,
 	                              const mandel_float real_part,
 	                              const mandel_float imag_part,
 	                              const mandel_float step,
@@ -68,7 +107,7 @@ namespace
 	{
 		const int total_sample = hsample * vsample;
 
-		register pixel sub_pixel;
+		register pixel<mandel_float> sub_pixel;
 		register mandel_float sub_real, sub_imag = imag_part;
 		register const mandel_float hstep = step / hsample;
 		register const mandel_float vstep = step / vsample;
@@ -79,28 +118,20 @@ namespace
 			sub_real = real_part;
 			for (int k = 0; k < hsample; ++k)
 			{
-				#ifdef MEMOIZE_COLOR
-				register unsigned int etime = escape_time (sub_real, sub_imag);
-				r += local_red [etime];
-				g += local_green [etime];
-				b += local_blue [etime];
-				#else
 				sub_pixel = colorize (escape_time (sub_real, sub_imag));
 				r += sub_pixel.red;
 				g += sub_pixel.green;
 				b += sub_pixel.blue;
-				#endif
 				sub_real = real_part + k * hstep;
 			}
 			sub_imag = imag_part - i * vstep;
 		}
-		sub_pixel.red = r / total_sample;
-		sub_pixel.green = g / total_sample;
-		sub_pixel.blue = b / total_sample;
-		*target_pixel = sub_pixel;
+		target_pixel->red = 0xFF * linear_to_srgb(r / total_sample);
+		target_pixel->green = 0xFF * linear_to_srgb(g / total_sample);
+		target_pixel->blue = 0xFF * linear_to_srgb(b / total_sample);
 	}
 
-	__global__ void __do_image (pixel* const picture,
+	__global__ void __do_image (pixel<uint8_t>* const picture,
 	                            const int image_width,
 	                            const int image_height,
 	                            const mandel_float left_viewport_border,
@@ -113,9 +144,7 @@ namespace
 		register const int array_length = image_height * image_width;
 		register const int my_id = threadIdx.x + blockIdx.x * blockDim.x;
 
-		#ifdef MEMOIZE_COLOR
 		load_colors ();
-		#endif
 
 		for (int point = my_id; point < array_length; point += nthreads)
 			create_pixel (picture + point,
@@ -129,7 +158,7 @@ namespace
 
 void do_image (const int NUM_BLOCKS,
                const int THREADS_PER_BLOCK,
-               pixel* const picture,
+               pixel<uint8_t>* const picture,
                const int image_width,
                const int image_height,
                const mandel_float left_viewport_border,

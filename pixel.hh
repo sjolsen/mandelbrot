@@ -1,13 +1,18 @@
 #ifndef PIXEL_HH
 #define PIXEL_HH
 
-typedef unsigned char uint8_t;
+template <typename T>
+struct pixel {
+	T red, green, blue;
 
-struct pixel
-{
-	uint8_t red, green, blue;
+	template <typename U>
+	pixel<U> convert() const {
+		return pixel<U> {
+			static_cast<U>(red),
+			static_cast<U>(green),
+			static_cast<U>(blue),
+		};
+	}
 };
-
-
 
 #endif
